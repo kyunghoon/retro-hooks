@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "module": "commonjs",
+    "declaration": true,
+    "outDir": "./dist",
+    "strict": true,
+    "strictFunctionTypes": true,
+    "strictPropertyInitialization": true,
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "noEmitOnError": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": false
+  }
+}
