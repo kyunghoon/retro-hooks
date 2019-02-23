@@ -1,6 +1,8 @@
-# Retro-Hook
+# Retro-Hooks
 
-## Are you stuck on an older version of react and unable to upgrade to order take advantage of hooks? this might be the repo for you!
+  (work in progress...)
+
+  Are you stuck on an older version of react and unable to upgrade in order take advantage of hooks? This might be the repo for you.
 
   this repo attempts to create a similar hooks api with some minor caveats and workarounds
 
@@ -18,17 +20,17 @@
     - createContext
 
 
-## small counter example
+## small counter example (w/ react-native & typescript)
 
     // example in react-native
 
     import * as React from 'react';
-    import { View } from 'react-native';
-    import { withHooks, useEffect } from 'retro-hooks';
+    import { View, Text, Button } from 'react-native';
+    import { withHooks, Hooks } from 'retro-hooks';
 
-    // wrap a function react component with `withHooks` to access the api
+    // wrap a functional react component with `withHooks` to access the hooks api
 
-    const MyComponent = withHooks({ useState, useEffect, useRef }, props => {
+    const MyComponent = withHooks({ useState, useEffect, useRef }: Hooks, props => {
 
       const [counter, setCounter] = useState(0);
 
@@ -45,13 +47,11 @@
     });
 
 
-## useRedux implementation example (in typescript)
-
-    // ./useRedux.ts
+## useRedux implementation example (w/ react-native & typescript)
 
     import { Hooks } from 'retro-hooks';
-    import { getReduxStore, RootState } from '../my-store';
-    import deepEquals from 'deepequals';
+    import { getReduxStore, RootState } from './my-store';
+    import deepEquals from './deepequals';
 
     // notice, the hooks object given by `withHooks` must be passed in to custom hooks
     export default <SubState>({ useState, useEffect, useRef }: Hooks, selectSubstate: (state: RootState) => SubState): SubState => {
@@ -87,7 +87,7 @@
       return <View>{mySubState}</View>;
     }
 
-    ... etc
+    //... etc
 
 
 
