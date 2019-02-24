@@ -25,7 +25,7 @@ if (!Object.is) {
 export type ProviderProps<T> = { value: T, children: ReactChildren };
 export type ConsumerProps<T> = { children: (t: T) => ReactChildren };
 export type Context<T> = { getValue: () => T; subscribe: (fn: () => void) => () => void };
-export const createContext = <T extends {}>(initialValue: T) => {
+export const createContext = <T extends unknown>(initialValue: T) => {
   return {
     Provider: class extends React.PureComponent<ProviderProps<T>> {
       static childContextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
