@@ -14,6 +14,8 @@
     - useState
     - useEffect
     - useRef
+    - useMemo
+    - useCallback
 
 ### additional tools
 
