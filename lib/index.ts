@@ -8,6 +8,7 @@ type Obj<T extends unknown> = { [key: string]: T | undefined };
 let _lastSetStateTime = new Date().getTime();
 let _numSetStates = 0;
 
+
 // [ CONTEXT ]
 declare global {
   interface Object {
@@ -71,7 +72,6 @@ export const createContext = <T extends unknown>(initialValue: T, config?: { sha
       }
       render() {
         Provider.currInstanceId = this._cid;
-        console.log('CTX = ', this._cid);
         return this.props.children;
       }
     },
@@ -86,9 +86,8 @@ export const createContext = <T extends unknown>(initialValue: T, config?: { sha
     },
     initialValue
   }
-
-  //return { Provider, Consumer, initialValue };
 }
+
 
 // [ HOOKS ]
 
