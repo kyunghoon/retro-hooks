@@ -30,56 +30,57 @@ export type Context<T> = {
 };
 
 export const createContext = <T extends unknown>(initialValue: T, config?: { sharedProviderState?: boolean }) => {
+  const _contexts: Obj<{ subs: (() => void)[], value: T }> = {};
   const issharedstate = config && config.sharedProviderState;
-  const contextClassId = issharedstate ? ++_contextIdCounter : _contextIdCounter;
-  class Provider extends React.PureComponent<ProviderProps<T>> {
-    static childContextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
-    static _contexts: Obj<{ subs: (() => void)[], value: T }> = {};
-    static _ccid = 0;
-    _cid = issharedstate ? Provider._ccid : ++_contextIdCounter;
-    constructor(props: ProviderProps<T>) {
-      super(props);
-      Provider._contexts[this._cid] = {
-        subs: [] as (() => void)[],
-        value: props.value,
-      };
-    }
-    getChildContext = () => ({
-      getValue: () => {
-        const ctx = Provider._contexts[this._cid];
-        return !ctx ? initialValue : ctx.value;
-      },
-      subscribe: (fn: () => void) => {
-        const ctx = Provider._contexts[this._cid];
-        if (!ctx || !ctx.subs) throw new Error('invalid context state');
-        ctx.subs.push(fn);
-        return () => ctx.subs = ctx.subs.filter(i => i !== fn);
+  const cid = issharedstate ? ++_contextIdCounter : _contextIdCounter;
+  return {
+    Provider: class extends React.PureComponent<ProviderProps<T>> {
+      static childContextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+      static _ccid = 0;
+      _cid = issharedstate ? cid : ++_contextIdCounter;
+      constructor(props: ProviderProps<T>) {
+        super(props);
+        _contexts[this._cid] = {
+          subs: [] as (() => void)[],
+          value: props.value,
+        };
       }
-    });
-    componentDidUpdate(prevProps: ProviderProps<T>) {
-      const ctx = Provider._contexts[this._cid];
-      if (ctx) {
-        ctx.value = this.props.value;
-        !Object.is(prevProps.value, this.props.value) && ctx.subs.forEach(fn => fn());
-        console.log(this._cid, ctx);
+      getChildContext = () => ({
+        getValue: () => {
+          const ctx = _contexts[this._cid];
+          return !ctx ? initialValue : ctx.value;
+        },
+        subscribe: (fn: () => void) => {
+          const ctx = _contexts[this._cid];
+          if (!ctx || !ctx.subs) throw new Error('invalid context state');
+          ctx.subs.push(fn);
+          return () => ctx.subs = ctx.subs.filter(i => i !== fn);
+        }
+      });
+      componentDidUpdate(prevProps: ProviderProps<T>) {
+        const ctx = _contexts[this._cid];
+        if (ctx) {
+          ctx.value = this.props.value;
+          !Object.is(prevProps.value, this.props.value) && ctx.subs.forEach(fn => fn());
+          console.log(this._cid, ctx);
+        }
       }
-    }
-    render() {
-      return this.props.children;
-    }
-  }
-  class Consumer extends React.PureComponent<ConsumerProps<T>> {
-    context!: ContextValue<T>;
-    static contextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
-    unsub = undefined as (() => void) | undefined;
-    componentDidMount() { this.unsub = this.context.subscribe(() => this.forceUpdate()); }
-    componentWillUnmount() { this.unsub && this.unsub(); this.unsub = undefined; }
-    render() { return this.props.children(this.context.getValue && this.context.getValue() || initialValue); }
+      render() {
+        return this.props.children;
+      }
+    },
+    Consumer: class extends React.PureComponent<ConsumerProps<T>> {
+      context!: ContextValue<T>;
+      static contextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+      unsub = undefined as (() => void) | undefined;
+      componentDidMount() { this.unsub = this.context.subscribe(() => this.forceUpdate()); }
+      componentWillUnmount() { this.unsub && this.unsub(); this.unsub = undefined; }
+      render() { return this.props.children(this.context.getValue && this.context.getValue() || initialValue); }
+    },
+    initialValue
   }
 
-  Provider._ccid = contextClassId;
-
-  return { Provider, Consumer, initialValue };
+  //return { Provider, Consumer, initialValue };
 }
 
 // [ HOOKS ]

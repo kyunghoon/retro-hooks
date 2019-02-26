@@ -13,6 +13,15 @@
     "noImplicitAny": true,
     "strictNullChecks": true,
     "noImplicitReturns": true,
-    "noUnusedLocals": false
+    "noUnusedLocals": false,
+    "lib": [
+      "dom",
+      "es5",
+      "scripthost",
+      "es2015.promise",
+      "es2015",
+      "es2017.object",
+      "es2015.reflect"
+    ]
   }
 }
