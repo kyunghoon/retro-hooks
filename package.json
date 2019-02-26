@@ -1,6 +1,6 @@
 {
   "name": "retro-hooks",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "pseudo partial react-hooks implementation supporting older versions of react",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
