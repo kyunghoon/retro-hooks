@@ -20,8 +20,9 @@ if (!Object.is) {
 
 export type ProviderProps<T> = { value: T, children: ReactChildren };
 export type ConsumerProps<T> = { children: (t: T) => ReactChildren };
-type ContextValue<T> = { getValue: () => T; subscribe: (fn: () => void) => () => void };
-let _contextIdCounter = 0;
+type ContextValue<T> = { ciid: number, getValue: () => T; subscribe: (fn: () => void) => () => void };
+let _contextClassIdCounter = 0;
+let _contextInstanceIdCounter = 0;
 
 export type Context<T> = {
   Provider: React.ComponentClass<any>,
@@ -29,15 +30,17 @@ export type Context<T> = {
   initialValue: T
 };
 
+const _contexts: Obj<{ subs: (() => void)[], value: any }> = {};
+
 export const createContext = <T extends unknown>(initialValue: T, config?: { sharedProviderState?: boolean }) => {
-  const _contexts: Obj<{ subs: (() => void)[], value: T }> = {};
   const issharedstate = config && config.sharedProviderState;
-  const cid = issharedstate ? ++_contextIdCounter : _contextIdCounter;
+  const contextClassId = ++_contextClassIdCounter;
   return {
-    Provider: class extends React.PureComponent<ProviderProps<T>> {
-      static childContextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
-      static _ccid = 0;
-      _cid = issharedstate ? cid : ++_contextIdCounter;
+    Provider: class Provider extends React.Component<ProviderProps<T>> {
+      static childContextTypes = { ccid: React.PropTypes.number, getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+      static ctxClassId = contextClassId;
+      _cid = ++_contextInstanceIdCounter;
+      static currInstanceId = 0;
       constructor(props: ProviderProps<T>) {
         super(props);
         _contexts[this._cid] = {
@@ -46,6 +49,7 @@ export const createContext = <T extends unknown>(initialValue: T, config?: { sha
         };
       }
       getChildContext = () => ({
+        ccid: this._cid,
         getValue: () => {
           const ctx = _contexts[this._cid];
           return !ctx ? initialValue : ctx.value;
@@ -66,12 +70,15 @@ export const createContext = <T extends unknown>(initialValue: T, config?: { sha
         }
       }
       render() {
+        Provider.currInstanceId = this._cid;
+        console.log('CTX = ', this._cid);
         return this.props.children;
       }
     },
-    Consumer: class extends React.PureComponent<ConsumerProps<T>> {
+    Consumer: class extends React.Component<ConsumerProps<T>> {
       context!: ContextValue<T>;
-      static contextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+      static contextTypes = { ccid: React.PropTypes.number, getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+      static ctxClassId = contextClassId;
       unsub = undefined as (() => void) | undefined;
       componentDidMount() { this.unsub = this.context.subscribe(() => this.forceUpdate()); }
       componentWillUnmount() { this.unsub && this.unsub(); this.unsub = undefined; }
@@ -102,12 +109,13 @@ type Memo = { fn: () => any, inputs?: any[] | undefined };
 export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) => JSX.Element | null): ReactComponent<P> => {
   return class extends React.Component<P, {}> {
     context!: ContextValue<any>;
-    static contextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
-    unsub = undefined as (() => void) | undefined;
+    static contextTypes = { ciid: React.PropTypes.number, getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+    unsubs = undefined as (() => void)[] | undefined;
     effects = [] as Effect[];
     cleanup = [] as (() => void)[];
     references = {} as Obj<Ref<any>>;
     memos = [] as Memo[];
+    ctxs = [] as Context<any>[];
     constructor(props: P, context: any) {
       super(props);
       let state = {} as Obj<any>;
@@ -117,6 +125,7 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
       this.cleanup = [];
       this.references = {};
       this.memos = [];
+      this.ctxs = [];
       const useMemo = <R extends unknown>(fn: () => R, inputs?: any[]) => {
         this.memos.push({ fn, inputs });
         return fn();
@@ -136,12 +145,24 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
         },
         useMemo,
         useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]): Fn => useMemo(() => fn, inputs),
-        useContext: <T extends unknown>(c: Context<T>): T => context.getValue && context.getValue() || c.initialValue,
+        useContext: <T extends unknown>(c: Context<T>): T => {
+          this.ctxs.push(c);
+          const ciid = (c.Provider as any).currInstanceId;
+          const ctx = ciid && _contexts[ciid];
+          return ctx && ctx.value || c.initialValue;
+        },
       }, props);
       this.state = state;
     }
     componentDidMount() {
-      this.unsub = this.context.subscribe && this.context.subscribe(() => this.forceUpdate());
+      this.unsubs = this.ctxs.map((c: any) => {
+        const ciid = (c.Provider as any).currInstanceId;
+        const ctx = ciid && _contexts[ciid];
+        if (!ctx) return () => {};
+        const fn = () => this.forceUpdate();
+        ctx.subs.push(fn);
+        return () => ctx.subs = ctx.subs.filter(i => i !== fn);
+      });
       const nextcleanup = [] as (() => void)[];
       this.effects.forEach(({ fn }) => {
         const ret = fn();
@@ -157,8 +178,8 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
       const cu = this.cleanup.reverse();
       this.cleanup = [];
       cu.forEach(fn => fn());
-      this.unsub && this.unsub();
-      this.unsub = undefined;
+      this.unsubs && this.unsubs.forEach((u: any) => u && u());
+      this.unsubs = undefined;
     }
     useState = <T extends unknown>(key: number, init: T): [T, (t: T | ((t: T) => T)) => void] => {
       const value = this.state == undefined || (this.state as any)[key] == undefined ? init : (this.state as any)[key] as T;
@@ -203,7 +224,11 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
         useRef: <T extends unknown>(_current: T) => this.references[ri++] as Ref<T>,
         useMemo: <T extends unknown>(fn: () => T, inputs?: any[]) => this.useMemo(nextmemos, fn, inputs),
         useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]) => this.useMemo(nextmemos, () => fn, inputs),
-        useContext: <T extends unknown>(c: Context<T>): T => this.context.getValue && this.context.getValue() || c.initialValue,
+        useContext: <T extends unknown>(c: Context<T>): T => {
+          const ciid = (c.Provider as any).currInstanceId;
+          const ctx = ciid && _contexts[ciid];
+          return ctx && ctx.value || c.initialValue;
+        },
       }, this.props);
       if (nextmemos.length != this.memos.length)
         throw new Error(`hook memos ordering has changed: ${nextmemos.length} != ${this.memos.length}`);
