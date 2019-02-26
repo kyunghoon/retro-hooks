@@ -16,7 +16,7 @@
     - useRef
     - useMemo
     - useCallback
-    - useContext
+    - useContext (wip)
 
 ### additional tools
 
@@ -52,26 +52,25 @@
 
 ## useRedux implementation example (w/ react-native & typescript)
 
+    /* ./useRedux.ts */
+
     import { Hooks } from 'retro-hooks';
     import { getReduxStore, RootState } from './my-store';
     import deepEquals from './deepequals';
 
-    // notice, the hooks object given by `withHooks` must be passed in to custom hooks
-    export default <SubState>({ useState, useEffect, useRef }: Hooks, selectSubstate: (state: RootState) => SubState): SubState => {
+    // notice that the hooks object given by `withHooks` must be explicitly passed to custom hooks
+
+    export default <SubState>({ useState, useEffect, useRef }: Hooks, selectSubstate: (state: RootState) => SubState): SubState
+      const {
       const [substate, setSubstate] = useState<SubState>(() => {
         const state = getReduxStore().getState();
         return selectSubstate(state);
       });
 
-      const prevSubstateRef = useRef<SubState | null>(null);
-      useEffect(() => {
-        prevSubstateRef.current = substate;
-      });
-
       const checkForUpdates = () => {
         const nextState = getReduxStore().getState();
         const nextSubstate = selectSubstate(nextState);
-        if (!deepEquals(prevSubstateRef.current, nextSubstate)) {
+        if (!deepEquals(substate, nextSubstate)) {
           setSubstate(nextSubstate);
         }
       };
@@ -82,15 +81,11 @@
     }
 
 
-    // ./app.ts
+    /* ./app.ts */
+
     import useRedux from './useRedux.ts';
 
     const MyApp = (_props: {}) => {
       const mySubState = useRedux(rootReduxState => rootReduxState.subReduxState);
       return <View>{mySubState}</View>;
     }
-
-    //... etc
-
-
-
