@@ -16,6 +16,7 @@
     - useRef
     - useMemo
     - useCallback
+    - useContext
 
 ### additional tools
 

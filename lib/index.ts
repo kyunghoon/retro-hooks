@@ -15,44 +15,72 @@ declare global {
   }
 }
 if (!Object.is) {
-  Object.is = function (x, y) {
-    if (x === y) {
-      return x !== 0 || 1 / x === 1 / y;
-    } else {
-      return x !== x && y !== y;
-    }
-  };
+  Object.is = function (x, y) { return x === y ? x !== 0 || 1 / x === 1 / y : x !== x && y !== y; };
 }
 
 export type ProviderProps<T> = { value: T, children: ReactChildren };
 export type ConsumerProps<T> = { children: (t: T) => ReactChildren };
-export type Context<T> = { getValue: () => T; subscribe: (fn: () => void) => () => void };
-export const createContext = <T extends unknown>(initialValue: T) => {
-  return {
-    Provider: class extends React.PureComponent<ProviderProps<T>> {
-      static childContextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
-      subs = [] as (() => void)[];
-      getChildContext = () => ({
-        getValue: () => this.props.value,
-        subscribe: (fn: () => void) => {
-          this.subs.push(fn);
-          return () => this.subs = this.subs.filter(i => i !== fn);
-        }
-      });
-      componentDidUpdate(prevProps: ProviderProps<T>) { !Object.is(prevProps.value, this.props.value) && this.subs.forEach(fn => fn()); }
-      render() { return this.props.children; }
-    },
-    Consumer: class extends React.PureComponent<ConsumerProps<T>> {
-      context!: Context<T>;
-      static contextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
-      unsub = undefined as (() => void) | undefined;
-      componentDidMount() { this.unsub = this.context.subscribe(() => this.forceUpdate()); }
-      componentWillUnmount() { this.unsub && this.unsub(); this.unsub = undefined; }
-      render() { return this.props.children(this.context.getValue && this.context.getValue() || initialValue); }
-    }
-  };
-}
+type ContextValue<T> = { getValue: () => T; subscribe: (fn: () => void) => () => void };
+let _contextIdCounter = 0;
 
+export type Context<T> = {
+  Provider: React.ComponentClass<any>,
+  Consumer: React.ComponentClass<any>,
+  initialValue: T
+};
+
+export const createContext = <T extends unknown>(initialValue: T, config?: { sharedProviderState?: boolean }) => {
+  const issharedstate = config && config.sharedProviderState;
+  const contextClassId = issharedstate ? ++_contextIdCounter : _contextIdCounter;
+  class Provider extends React.PureComponent<ProviderProps<T>> {
+    static childContextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+    static _contexts: Obj<{ subs: (() => void)[], value: T }> = {};
+    static _ccid = 0;
+    _cid = issharedstate ? Provider._ccid : ++_contextIdCounter;
+    constructor(props: ProviderProps<T>) {
+      super(props);
+      Provider._contexts[this._cid] = {
+        subs: [] as (() => void)[],
+        value: props.value,
+      };
+    }
+    getChildContext = () => ({
+      getValue: () => {
+        const ctx = Provider._contexts[this._cid];
+        return !ctx ? initialValue : ctx.value;
+      },
+      subscribe: (fn: () => void) => {
+        const ctx = Provider._contexts[this._cid];
+        if (!ctx || !ctx.subs) throw new Error('invalid context state');
+        ctx.subs.push(fn);
+        return () => ctx.subs = ctx.subs.filter(i => i !== fn);
+      }
+    });
+    componentDidUpdate(prevProps: ProviderProps<T>) {
+      const ctx = Provider._contexts[this._cid];
+      if (ctx) {
+        ctx.value = this.props.value;
+        !Object.is(prevProps.value, this.props.value) && ctx.subs.forEach(fn => fn());
+        console.log(this._cid, ctx);
+      }
+    }
+    render() {
+      return this.props.children;
+    }
+  }
+  class Consumer extends React.PureComponent<ConsumerProps<T>> {
+    context!: ContextValue<T>;
+    static contextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+    unsub = undefined as (() => void) | undefined;
+    componentDidMount() { this.unsub = this.context.subscribe(() => this.forceUpdate()); }
+    componentWillUnmount() { this.unsub && this.unsub(); this.unsub = undefined; }
+    render() { return this.props.children(this.context.getValue && this.context.getValue() || initialValue); }
+  }
+
+  Provider._ccid = contextClassId;
+
+  return { Provider, Consumer, initialValue };
+}
 
 // [ HOOKS ]
 
@@ -63,7 +91,8 @@ export type Hooks = {
   useEffect: (fn: () => (() => void) | void, inputs?: any[]) => void,
   useRef: <T>(initialValue: T) => Ref<T>,
   useMemo: <R>(fn: () => R, inputs?: any[]) => R,
-  useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]) => Fn
+  useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]) => Fn,
+  useContext: <T>(context: Context<T>) => T
 };
 
 type Effect = { fn: () => (() => void) | void, inputs: any[] | undefined, changed: boolean };
@@ -71,11 +100,14 @@ type Memo = { fn: () => any, inputs?: any[] | undefined };
 
 export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) => JSX.Element | null): ReactComponent<P> => {
   return class extends React.Component<P, {}> {
+    context!: ContextValue<any>;
+    static contextTypes = { getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+    unsub = undefined as (() => void) | undefined;
     effects = [] as Effect[];
     cleanup = [] as (() => void)[];
     references = {} as Obj<Ref<any>>;
     memos = [] as Memo[];
-    constructor(props: P) {
+    constructor(props: P, context: any) {
       super(props);
       let state = {} as Obj<any>;
       let si = 0;
@@ -102,11 +134,13 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
           return ref;
         },
         useMemo,
-        useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]): Fn => useMemo(() => fn, inputs)
+        useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]): Fn => useMemo(() => fn, inputs),
+        useContext: <T extends unknown>(c: Context<T>): T => context.getValue && context.getValue() || c.initialValue,
       }, props);
       this.state = state;
     }
     componentDidMount() {
+      this.unsub = this.context.subscribe(() => this.forceUpdate());
       const nextcleanup = [] as (() => void)[];
       this.effects.forEach(({ fn }) => {
         const ret = fn();
@@ -122,6 +156,8 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
       const cu = this.cleanup.reverse();
       this.cleanup = [];
       cu.forEach(fn => fn());
+      this.unsub && this.unsub();
+      this.unsub = undefined;
     }
     useState = <T extends unknown>(key: number, init: T): [T, (t: T | ((t: T) => T)) => void] => {
       const value = this.state == undefined || (this.state as any)[key] == undefined ? init : (this.state as any)[key] as T;
@@ -138,16 +174,21 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
       }];
     }
     useMemo = <T extends unknown>(nextmemos: Memo[], fn: () => T, inputs?: any[]): T => {
-      if (nextmemos.length > this.memos.length)
-        throw new Error(`hook memos ordering mismatch ${nextmemos.length} > ${this.memos.length}`);
-      const prev = this.memos[nextmemos.length];
-      if (!inputs || inputs.length == 0 || inputsEquals(prev.inputs, inputs, 'memo')) {
-        const pfn = prev.fn || fn; // keep same
-        nextmemos.push({ fn: pfn, inputs });
-        return pfn() as T;
-      } else {
-        nextmemos.push({ fn, inputs }); // changed
-        return fn() as T;
+      try {
+        if (nextmemos.length > this.memos.length)
+          throw new Error(`hook memos ordering mismatch ${nextmemos.length} > ${this.memos.length}`);
+        const prev = this.memos[nextmemos.length];
+        if (!inputs || inputs.length == 0 || inputsEquals(prev.inputs, inputs, 'memo')) {
+          const pfn = prev.fn || fn; // keep same
+          nextmemos.push({ fn: pfn, inputs });
+          return pfn() as T;
+        } else {
+          nextmemos.push({ fn, inputs }); // changed
+          return fn() as T;
+        }
+      } catch (err) {
+        console.error(err);
+        throw err;
       }
     }
     render() {
@@ -160,7 +201,8 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
         useState: init => this.useState(i++, init instanceof Function ? init() : init),
         useRef: <T extends unknown>(_current: T) => this.references[ri++] as Ref<T>,
         useMemo: <T extends unknown>(fn: () => T, inputs?: any[]) => this.useMemo(nextmemos, fn, inputs),
-        useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]) => this.useMemo(nextmemos, () => fn, inputs)
+        useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]) => this.useMemo(nextmemos, () => fn, inputs),
+        useContext: <T extends unknown>(c: Context<T>): T => this.context.getValue && this.context.getValue() || c.initialValue,
       }, this.props);
       if (nextmemos.length != this.memos.length)
         throw new Error(`hook memos ordering has changed: ${nextmemos.length} != ${this.memos.length}`);
