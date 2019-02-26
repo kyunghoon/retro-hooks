@@ -67,7 +67,6 @@ export const createContext = <T extends unknown>(initialValue: T, config?: { sha
         if (ctx) {
           ctx.value = this.props.value;
           !Object.is(prevProps.value, this.props.value) && ctx.subs.forEach(fn => fn());
-          console.log(this._cid, ctx);
         }
       }
       render() {
