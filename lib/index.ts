@@ -141,7 +141,7 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
       this.state = state;
     }
     componentDidMount() {
-      this.unsub = this.context.subscribe(() => this.forceUpdate());
+      this.unsub = this.context.subscribe && this.context.subscribe(() => this.forceUpdate());
       const nextcleanup = [] as (() => void)[];
       this.effects.forEach(({ fn }) => {
         const ret = fn();
