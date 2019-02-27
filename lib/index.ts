@@ -50,12 +50,17 @@ export const createContext = <T extends unknown>(initialValue: T) => {
       static currInstanceId = 0;
       constructor(props: ProviderProps<T>) {
         super(props);
-        const ctxs = _contexts[Provider.ctxClassId] || {} as CtxClasses;
-        _contexts[Provider.ctxClassId] = ctxs;
-        ctxs[this._cid] = {
-          subs: [] as (() => void)[],
-          value: props.value,
-        };
+        try {
+          const ctxs = _contexts[Provider.ctxClassId] || {} as CtxClasses;
+          _contexts[Provider.ctxClassId] = ctxs;
+          ctxs[this._cid] = {
+            subs: [] as (() => void)[],
+            value: props.value,
+          };
+        } catch (err) {
+          console.error(err);
+          throw err;
+        }
       }
       getChildContext = () => ({
         ccid: this._cid,
@@ -73,16 +78,26 @@ export const createContext = <T extends unknown>(initialValue: T) => {
         }
       });
       componentDidUpdate(prevProps: ProviderProps<T>) {
+        try {
         const ctxs = _contexts[Provider.ctxClassId];
         const ctx = ctxs && ctxs[this._cid];
         if (ctx) {
           ctx.value = this.props.value;
           !Object.is(prevProps.value, this.props.value) && ctx.subs.forEach(fn => fn());
         }
+        } catch (err) {
+          console.error(err);
+          throw err;
+        }
       }
       render() {
-        Provider.currInstanceId = this._cid;
-        return this.props.children;
+        try {
+          Provider.currInstanceId = this._cid;
+          return this.props.children;
+        } catch (err) {
+          console.error(err);
+          throw err;
+        }
       }
     },
     Consumer: class Consumer extends React.Component<ConsumerProps<T>> {
@@ -127,70 +142,90 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
     ctxs = [] as Context<any>[];
     constructor(props: P, context: any) {
       super(props);
-      let state = {} as Obj<any>;
-      let si = 0;
-      let ri = 0;
-      this.effects = [];
-      this.cleanup = [];
-      this.references = {};
-      this.memos = [];
-      this.ctxs = [];
-      const useMemo = <R extends unknown>(fn: () => R, inputs?: any[]) => {
-        this.memos.push({ fn, inputs });
-        return fn();
-      };
-      renderFn({
-        useEffect: (fn, inputs) => this.effects.push({ fn, inputs, changed: true }),
-        useState: <T extends unknown>(init: T | (() => T)) => {
-          const key = si++;
-          const value = init instanceof Function ? init() : init;
-          state[key] = value;
-          return [value, (v: T | ((t: T) => T)) => { }];
-        },
-        useRef: <T extends unknown>(current: T) => {
-          const ref = { current };
-          this.references[ri++] = ref;
-          return ref;
-        },
-        useMemo,
-        useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]): Fn => useMemo(() => fn, inputs),
-        useContext: <T extends unknown>(c: Context<T>): T => {
-          this.ctxs.push(c);
+      try {
+        let state = {} as Obj<any>;
+        let si = 0;
+        let ri = 0;
+        this.effects = [];
+        this.cleanup = [];
+        this.references = {};
+        this.memos = [];
+        this.ctxs = [];
+        const useMemo = <R extends unknown>(fn: () => R, inputs?: any[]) => {
+          this.memos.push({ fn, inputs });
+          return fn();
+        };
+        renderFn({
+          useEffect: (fn, inputs) => this.effects.push({ fn, inputs, changed: true }),
+          useState: <T extends unknown>(init: T | (() => T)) => {
+            const key = si++;
+            const value = init instanceof Function ? init() : init;
+            state[key] = value;
+            return [value, (v: T | ((t: T) => T)) => { }];
+          },
+          useRef: <T extends unknown>(current: T) => {
+            const ref = { current };
+            this.references[ri++] = ref;
+            return ref;
+          },
+          useMemo,
+          useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]): Fn => useMemo(() => fn, inputs),
+          useContext: <T extends unknown>(c: Context<T>): T => {
+            this.ctxs.push(c);
+            const clsid = (c.Provider as any).ctxClassId;
+            const ciid = (c.Provider as any).currInstanceId;
+            const ctx = clsid && ciid && _contexts[clsid] && _contexts[clsid]![ciid];
+            return ctx && ctx.value || c.initialValue;
+          },
+        }, props);
+        this.state = state;
+      } catch (err) {
+        console.error(err);
+        throw err;
+      }
+    }
+    componentDidMount() {
+      try {
+        this.unsubs = this.ctxs.map((c: any) => {
           const clsid = (c.Provider as any).ctxClassId;
           const ciid = (c.Provider as any).currInstanceId;
           const ctx = clsid && ciid && _contexts[clsid] && _contexts[clsid]![ciid];
-          return ctx && ctx.value || c.initialValue;
-        },
-      }, props);
-      this.state = state;
-    }
-    componentDidMount() {
-      this.unsubs = this.ctxs.map((c: any) => {
-        const clsid = (c.Provider as any).ctxClassId;
-        const ciid = (c.Provider as any).currInstanceId;
-        const ctx = clsid && ciid && _contexts[clsid] && _contexts[clsid]![ciid];
-        if (!ctx) return () => {};
-        const fn = () => this.forceUpdate();
-        ctx.subs.push(fn);
-        return () => ctx.subs = ctx.subs.filter(i => i !== fn);
-      });
-      const nextcleanup = [] as (() => void)[];
-      this.effects.forEach(({ fn }) => {
-        const ret = fn();
-        ret instanceof Function && nextcleanup.push(ret);
-      });
-      this.cleanup = nextcleanup;
+          if (!ctx) return () => {};
+          const fn = () => this.forceUpdate();
+          ctx.subs.push(fn);
+          return () => ctx.subs = ctx.subs.filter(i => i !== fn);
+        });
+        const nextcleanup = [] as (() => void)[];
+        this.effects.forEach(({ fn }) => {
+          const ret = fn();
+          ret instanceof Function && nextcleanup.push(ret);
+        });
+        this.cleanup = nextcleanup;
+      } catch (err) {
+        console.error(err);
+        throw err;
+      }
     }
     componentDidUpdate() {
-      this.effects.forEach(({ fn, inputs, changed }) =>
-        !inputs || inputs.length > 0 && changed && fn());
+      try {
+        this.effects.forEach(({ fn, inputs, changed }) =>
+          !inputs || inputs.length > 0 && changed && fn());
+      } catch (err) {
+        console.error(err);
+        throw err;
+      }
     }
     componentWillUnmount() {
-      const cu = this.cleanup.reverse();
-      this.cleanup = [];
-      cu.forEach(fn => fn());
-      this.unsubs && this.unsubs.forEach((u: any) => u && u());
-      this.unsubs = undefined;
+      try {
+        const cu = this.cleanup.reverse();
+        this.cleanup = [];
+        cu.forEach(fn => fn());
+        this.unsubs && this.unsubs.forEach((u: any) => u && u());
+        this.unsubs = undefined;
+      } catch (err) {
+        console.error(err);
+        throw err;
+      }
     }
     useState = <T extends unknown>(key: number, init: T): [T, (t: T | ((t: T) => T)) => void] => {
       const value = this.state == undefined || (this.state as any)[key] == undefined ? init : (this.state as any)[key] as T;
@@ -225,30 +260,35 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
       }
     }
     render() {
-      let i = 0;
-      let ri = 0;
-      const nexteffects = [] as Effect[];
-      const nextmemos = [] as Memo[];
-      const ret = renderFn({
-        useEffect: (fn, inputs) => nexteffects.push({ fn, inputs, changed: false }),
-        useState: init => this.useState(i++, init instanceof Function ? init() : init),
-        useRef: <T extends unknown>(_current: T) => this.references[ri++] as Ref<T>,
-        useMemo: <T extends unknown>(fn: () => T, inputs?: any[]) => this.useMemo(nextmemos, fn, inputs),
-        useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]) => this.useMemo(nextmemos, () => fn, inputs),
-        useContext: <T extends unknown>(c: Context<T>): T => {
-          const clsid = (c.Provider as any).ctxClassId;
-          const ciid = (c.Provider as any).currInstanceId;
-          const ctx = clsid && ciid && _contexts[clsid] && _contexts[clsid]![ciid];
-          return ctx && ctx.value || c.initialValue;
-        },
-      }, this.props);
-      if (nextmemos.length != this.memos.length)
-        throw new Error(`hook memos ordering has changed: ${nextmemos.length} != ${this.memos.length}`);
-      if (nexteffects.length != this.effects.length)
-        throw new Error(`hook effects ordering has changed: ${nexteffects.length} != ${this.effects.length}`);
-      this.effects = nexteffects.map((next, i) => ({ ...next, changed: !inputsEquals(this.effects[i].inputs, next.inputs, 'effect') }));
-      this.memos = nextmemos;
-      return ret;
+      try {
+        let i = 0;
+        let ri = 0;
+        const nexteffects = [] as Effect[];
+        const nextmemos = [] as Memo[];
+        const ret = renderFn({
+          useEffect: (fn, inputs) => nexteffects.push({ fn, inputs, changed: false }),
+          useState: init => this.useState(i++, init instanceof Function ? init() : init),
+          useRef: <T extends unknown>(_current: T) => this.references[ri++] as Ref<T>,
+          useMemo: <T extends unknown>(fn: () => T, inputs?: any[]) => this.useMemo(nextmemos, fn, inputs),
+          useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]) => this.useMemo(nextmemos, () => fn, inputs),
+          useContext: <T extends unknown>(c: Context<T>): T => {
+            const clsid = (c.Provider as any).ctxClassId;
+            const ciid = (c.Provider as any).currInstanceId;
+            const ctx = clsid && ciid && _contexts[clsid] && _contexts[clsid]![ciid];
+            return ctx && ctx.value || c.initialValue;
+          },
+        }, this.props);
+        if (nextmemos.length != this.memos.length)
+          throw new Error(`hook memos ordering has changed: ${nextmemos.length} != ${this.memos.length}`);
+        if (nexteffects.length != this.effects.length)
+          throw new Error(`hook effects ordering has changed: ${nexteffects.length} != ${this.effects.length}`);
+        this.effects = nexteffects.map((next, i) => ({ ...next, changed: !inputsEquals(this.effects[i].inputs, next.inputs, 'effect') }));
+        this.memos = nextmemos;
+        return ret;
+      } catch (err) {
+        console.error(err);
+        throw err;
+      }
     }
   }
 }
