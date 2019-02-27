@@ -21,7 +21,7 @@ if (!Object.is) {
 
 export type ProviderProps<T> = { value: T, children: ReactChildren };
 export type ConsumerProps<T> = { children: (t: T) => ReactChildren };
-type ContextValue<T> = { ciid: number, getValue: (clsId: number) => T; subscribe: (clsId: number, fn: () => void) => () => void };
+type ContextValue<T> = { ciid: number, rh__getValue: (clsId: number) => T; rh__subscribe: (clsId: number, fn: () => void) => () => void };
 
 let _contextClassCounter = 0;
 
@@ -44,7 +44,7 @@ export const createContext = <T extends unknown>(initialValue: T) => {
   let contextInstanceCounter = 0;
   return {
     Provider: class Provider extends React.Component<ProviderProps<T>> {
-      static childContextTypes = { ccid: React.PropTypes.number, getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+      static childContextTypes = { ccid: React.PropTypes.number, rh__getValue: React.PropTypes.func, rh__subscribe: React.PropTypes.func };
       static ctxClassId = _contextClassCounter;
       _cid = ++contextInstanceCounter;
       static currInstanceId = 0;
@@ -64,12 +64,12 @@ export const createContext = <T extends unknown>(initialValue: T) => {
       }
       getChildContext = () => ({
         ccid: this._cid,
-        getValue: (clsId: number) => {
+        rh__getValue: (clsId: number) => {
           const ctxs = _contexts[clsId];
           const ctx = ctxs && ctxs[this._cid];
           return !ctx ? initialValue : ctx.value;
         },
-        subscribe: (clsId: number, fn: () => void) => {
+        rh__subscribe: (clsId: number, fn: () => void) => {
           const ctxs = _contexts[clsId];
           const ctx = ctxs && ctxs[this._cid];
           if (!ctx || !ctx.subs) throw new Error('invalid context state');
@@ -102,12 +102,12 @@ export const createContext = <T extends unknown>(initialValue: T) => {
     },
     Consumer: class Consumer extends React.Component<ConsumerProps<T>> {
       context!: ContextValue<T>;
-      static contextTypes = { ccid: React.PropTypes.number, getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+      static contextTypes = { ccid: React.PropTypes.number, rh__getValue: React.PropTypes.func, rh__subscribe: React.PropTypes.func };
       static ctxClassId = _contextClassCounter;
       unsub = undefined as (() => void) | undefined;
-      componentDidMount() { this.unsub = this.context.subscribe(Consumer.ctxClassId, () => this.forceUpdate()); }
+      componentDidMount() { this.unsub = this.context.rh__subscribe(Consumer.ctxClassId, () => this.forceUpdate()); }
       componentWillUnmount() { this.unsub && this.unsub(); this.unsub = undefined; }
-      render() { return this.props.children(this.context.getValue && this.context.getValue(Consumer.ctxClassId) || initialValue); }
+      render() { return this.props.children(this.context.rh__getValue && this.context.rh__getValue(Consumer.ctxClassId) || initialValue); }
     },
     initialValue
   }
@@ -133,7 +133,7 @@ type Memo = { fn: () => any, inputs?: any[] | undefined };
 export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) => JSX.Element | null): ReactComponent<P> => {
   return class extends React.Component<P, {}> {
     context!: ContextValue<any>;
-    static contextTypes = { ciid: React.PropTypes.number, getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
+    static contextTypes = { ciid: React.PropTypes.number, rh__getValue: React.PropTypes.func, rh__subscribe: React.PropTypes.func };
     unsubs = undefined as (() => void)[] | undefined;
     effects = [] as Effect[];
     cleanup = [] as (() => void)[];
