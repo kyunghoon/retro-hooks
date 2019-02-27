@@ -21,9 +21,9 @@ if (!Object.is) {
 
 export type ProviderProps<T> = { value: T, children: ReactChildren };
 export type ConsumerProps<T> = { children: (t: T) => ReactChildren };
-type ContextValue<T> = { ciid: number, getValue: () => T; subscribe: (fn: () => void) => () => void };
-let _contextClassIdCounter = 0;
-let _contextInstanceIdCounter = 0;
+type ContextValue<T> = { ciid: number, getValue: (clsId: number) => T; subscribe: (clsId: number, fn: () => void) => () => void };
+
+let _contextClassCounter = 0;
 
 export type Context<T> = {
   Provider: React.ComponentClass<any>,
@@ -31,39 +31,50 @@ export type Context<T> = {
   initialValue: T
 };
 
-const _contexts: Obj<{ subs: (() => void)[], value: any }> = {};
+type CtxInst = { subs: (() => void)[], value: any };
+type CtxClasses = Obj<CtxInst>;
+const _contexts: Obj<CtxClasses> = {};
 
-export const createContext = <T extends unknown>(initialValue: T, config?: { sharedProviderState?: boolean }) => {
-  const issharedstate = config && config.sharedProviderState;
-  const contextClassId = ++_contextClassIdCounter;
+(window as any)._ctx = {
+  _contexts,
+};
+
+export const createContext = <T extends unknown>(initialValue: T) => {
+  ++_contextClassCounter;
+  let contextInstanceCounter = 0;
   return {
     Provider: class Provider extends React.Component<ProviderProps<T>> {
       static childContextTypes = { ccid: React.PropTypes.number, getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
-      static ctxClassId = contextClassId;
-      _cid = ++_contextInstanceIdCounter;
+      static ctxClassId = _contextClassCounter;
+      _cid = ++contextInstanceCounter;
       static currInstanceId = 0;
       constructor(props: ProviderProps<T>) {
         super(props);
-        _contexts[this._cid] = {
+        const ctxs = _contexts[Provider.ctxClassId] || {} as CtxClasses;
+        _contexts[Provider.ctxClassId] = ctxs;
+        ctxs[this._cid] = {
           subs: [] as (() => void)[],
           value: props.value,
         };
       }
       getChildContext = () => ({
         ccid: this._cid,
-        getValue: () => {
-          const ctx = _contexts[this._cid];
+        getValue: (clsId: number) => {
+          const ctxs = _contexts[clsId];
+          const ctx = ctxs && ctxs[this._cid];
           return !ctx ? initialValue : ctx.value;
         },
-        subscribe: (fn: () => void) => {
-          const ctx = _contexts[this._cid];
+        subscribe: (clsId: number, fn: () => void) => {
+          const ctxs = _contexts[clsId];
+          const ctx = ctxs && ctxs[this._cid];
           if (!ctx || !ctx.subs) throw new Error('invalid context state');
           ctx.subs.push(fn);
           return () => ctx.subs = ctx.subs.filter(i => i !== fn);
         }
       });
       componentDidUpdate(prevProps: ProviderProps<T>) {
-        const ctx = _contexts[this._cid];
+        const ctxs = _contexts[Provider.ctxClassId];
+        const ctx = ctxs && ctxs[this._cid];
         if (ctx) {
           ctx.value = this.props.value;
           !Object.is(prevProps.value, this.props.value) && ctx.subs.forEach(fn => fn());
@@ -74,14 +85,14 @@ export const createContext = <T extends unknown>(initialValue: T, config?: { sha
         return this.props.children;
       }
     },
-    Consumer: class extends React.Component<ConsumerProps<T>> {
+    Consumer: class Consumer extends React.Component<ConsumerProps<T>> {
       context!: ContextValue<T>;
       static contextTypes = { ccid: React.PropTypes.number, getValue: React.PropTypes.func, subscribe: React.PropTypes.func };
-      static ctxClassId = contextClassId;
+      static ctxClassId = _contextClassCounter;
       unsub = undefined as (() => void) | undefined;
-      componentDidMount() { this.unsub = this.context.subscribe(() => this.forceUpdate()); }
+      componentDidMount() { this.unsub = this.context.subscribe(Consumer.ctxClassId, () => this.forceUpdate()); }
       componentWillUnmount() { this.unsub && this.unsub(); this.unsub = undefined; }
-      render() { return this.props.children(this.context.getValue && this.context.getValue() || initialValue); }
+      render() { return this.props.children(this.context.getValue && this.context.getValue(Consumer.ctxClassId) || initialValue); }
     },
     initialValue
   }
@@ -145,8 +156,9 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
         useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]): Fn => useMemo(() => fn, inputs),
         useContext: <T extends unknown>(c: Context<T>): T => {
           this.ctxs.push(c);
+          const clsid = (c.Provider as any).ctxClassId;
           const ciid = (c.Provider as any).currInstanceId;
-          const ctx = ciid && _contexts[ciid];
+          const ctx = clsid && ciid && _contexts[clsid] && _contexts[clsid]![ciid];
           return ctx && ctx.value || c.initialValue;
         },
       }, props);
@@ -154,8 +166,9 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
     }
     componentDidMount() {
       this.unsubs = this.ctxs.map((c: any) => {
+        const clsid = (c.Provider as any).ctxClassId;
         const ciid = (c.Provider as any).currInstanceId;
-        const ctx = ciid && _contexts[ciid];
+        const ctx = clsid && ciid && _contexts[clsid] && _contexts[clsid]![ciid];
         if (!ctx) return () => {};
         const fn = () => this.forceUpdate();
         ctx.subs.push(fn);
@@ -223,8 +236,9 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
         useMemo: <T extends unknown>(fn: () => T, inputs?: any[]) => this.useMemo(nextmemos, fn, inputs),
         useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]) => this.useMemo(nextmemos, () => fn, inputs),
         useContext: <T extends unknown>(c: Context<T>): T => {
+          const clsid = (c.Provider as any).ctxClassId;
           const ciid = (c.Provider as any).currInstanceId;
-          const ctx = ciid && _contexts[ciid];
+          const ctx = clsid && ciid && _contexts[clsid] && _contexts[clsid]![ciid];
           return ctx && ctx.value || c.initialValue;
         },
       }, this.props);
