@@ -161,7 +161,9 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
             const key = si++;
             const value = init instanceof Function ? init() : init;
             state[key] = value;
-            return [value, (v: T | ((t: T) => T)) => { }];
+            return [value, (v: T | ((t: T) => T)) => {
+              this.setState({ [key]: v instanceof Function ? v((this.state as any)[key]) : v });
+            }];
           },
           useRef: <T extends unknown>(current: T) => {
             const ref = { current };
@@ -227,9 +229,8 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
         throw err;
       }
     }
-    useState = <T extends unknown>(key: number, init: T): [T, (t: T | ((t: T) => T)) => void] => {
-      const value = this.state == undefined || (this.state as any)[key] == undefined ? init : (this.state as any)[key] as T;
-      return [value, (v: T | ((t: T) => T)) => {
+    useState = <T extends unknown>(key: number): [T, (t: T | ((t: T) => T)) => void] => {
+      return [(this.state as any)[key], (v: T | ((t: T) => T)) => {
         const now = new Date().getTime();
         const dt = now - _lastSetStateTime;
         _numSetStates = dt > 50 ? 0 : _numSetStates + 1;
@@ -267,7 +268,11 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
         const nextmemos = [] as Memo[];
         const ret = renderFn({
           useEffect: (fn, inputs) => nexteffects.push({ fn, inputs, changed: false }),
-          useState: init => this.useState(i++, init instanceof Function ? init() : init),
+          useState: <T extends unknown>(init: T | (() => T)) => {
+            const key = i++;
+            //return this.useState(key, this.state == undefined || (this.state as any)[key] == undefined ? (init instanceof Function ? init() : init) : (this.state as any)[key] as T)
+            return this.useState(key);
+          },
           useRef: <T extends unknown>(_current: T) => this.references[ri++] as Ref<T>,
           useMemo: <T extends unknown>(fn: () => T, inputs?: any[]) => this.useMemo(nextmemos, fn, inputs),
           useCallback: <Fn extends unknown>(fn: Fn, inputs?: any[]) => this.useMemo(nextmemos, () => fn, inputs),
