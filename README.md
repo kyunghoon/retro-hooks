@@ -33,7 +33,7 @@
 
     // wrap a functional react component with `withHooks` to access the hooks api
 
-    const MyComponent = withHooks({ useState, useEffect, useRef }: Hooks, props => {
+    const MyComponent = withHooks<Props>(({ useState, useEffect, useRef }, props) => {
 
       const [counter, setCounter] = useState(0);
 
@@ -60,24 +60,21 @@
 
     // notice that the hooks object given by `withHooks` must be explicitly passed to custom hooks
 
-    export default <SubState>({ useState, useEffect, useRef }: Hooks, selectSubstate: (state: RootState) => SubState): SubState
-      const {
-      const [substate, setSubstate] = useState<SubState>(() => {
-        const state = getReduxStore().getState();
-        return selectSubstate(state);
-      });
+    export default <SubState>({ useRef, useState, useEffect }: Hooks, selectSubstate: (state: RootState) => SubState): SubState => {
+      const [substate, setSubstate] = useState(() => selectSubstate(getReduxStore().getState()));
+      const substateRef = useRef(substate);
 
       const checkForUpdates = () => {
-        const nextState = getReduxStore().getState();
-        const nextSubstate = selectSubstate(nextState);
-        if (!deepEquals(substate, nextSubstate)) {
+        const nextSubstate = selectSubstate(getReduxStore().getState());
+        if (!deepEquals(substateRef.current, nextSubstate)) {
+          substateRef.current = nextSubstate;
           setSubstate(nextSubstate);
         }
       };
 
       useEffect(() => getReduxStore().subscribe(checkForUpdates), []);
 
-      return substate;
+      return substateRef.current;
     }
 
 
