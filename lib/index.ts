@@ -200,7 +200,7 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
         const nextcleanup = [] as (() => void)[];
         this.effects.forEach(({ fn }) => {
           const ret = fn();
-          nextcleanup.push(ret instanceof Function ? ret : () => {});
+          nextcleanup.push(ret instanceof Function ? ret : () => { });
         });
         this.cleanup = nextcleanup;
       } catch (err) {
@@ -218,7 +218,8 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
               this.cleanup[n] = () => { };
               cu();
             }
-            needsUpdate && fn();
+            const ret = fn();
+            this.cleanup[n] = ret instanceof Function ? ret : () => { };
           }
         });
       } catch (err) {
