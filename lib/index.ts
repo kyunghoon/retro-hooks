@@ -79,12 +79,12 @@ export const createContext = <T extends unknown>(initialValue: T) => {
       });
       componentDidUpdate(prevProps: ProviderProps<T>) {
         try {
-        const ctxs = _contexts[Provider.ctxClassId];
-        const ctx = ctxs && ctxs[this._cid];
-        if (ctx) {
-          ctx.value = this.props.value;
-          !Object.is(prevProps.value, this.props.value) && ctx.subs.forEach(fn => fn());
-        }
+          const ctxs = _contexts[Provider.ctxClassId];
+          const ctx = ctxs && ctxs[this._cid];
+          if (ctx) {
+            ctx.value = this.props.value;
+            !Object.is(prevProps.value, this.props.value) && ctx.subs.forEach(fn => fn());
+          }
         } catch (err) {
           console.error(err);
           throw err;
@@ -211,12 +211,15 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
     componentDidUpdate() {
       try {
         this.effects.forEach(({ fn, inputs, changed }, n) => {
-          if (this.cleanup) {
-            const cu = this.cleanup[n];
-            this.cleanup[n] = () => { };
-            cu();
+          const needsUpdate = !inputs || inputs.length > 0 && changed;
+          if (needsUpdate) {
+            if (this.cleanup) {
+              const cu = this.cleanup[n];
+              this.cleanup[n] = () => { };
+              cu();
+            }
+            needsUpdate && fn();
           }
-          !inputs || inputs.length > 0 && changed && fn();
         });
       } catch (err) {
         console.error(err);
