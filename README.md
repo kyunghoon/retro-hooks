@@ -55,26 +55,31 @@
     /* ./useRedux.ts */
 
     import { Hooks } from 'retro-hooks';
-    import { getReduxStore, RootState } from './my-store';
-    import deepEquals from './deepequals';
+    import { getReduxStore, RootState } from './mystore';
+    import deepEquals from './mydeepequals';
+
+    export type StoreState = RootState;
 
     // notice that the hooks object given by `withHooks` must be explicitly passed to custom hooks
-
-    export default <SubState>({ useRef, useState, useEffect }: Hooks, selectSubstate: (state: RootState) => SubState): SubState => {
+    export default <SubState>({ useState, useEffect }: Hooks, selectSubstate: (state: RootState) => SubState, inputs?: unknown[]): SubState => {
       const [substate, setSubstate] = useState(() => selectSubstate(getReduxStore().getState()));
-      const substateRef = useRef(substate);
 
-      const checkForUpdates = () => {
+      const checkForUpdates = (prevState: SubState) => {
         const nextSubstate = selectSubstate(getReduxStore().getState());
-        if (!deepEquals(substateRef.current, nextSubstate)) {
-          substateRef.current = nextSubstate;
+        if (!deepEquals(prevState, nextSubstate)) {
           setSubstate(nextSubstate);
+          return nextSubstate;
+        } else {
+          return prevState;
         }
       };
 
-      useEffect(() => getReduxStore().subscribe(checkForUpdates), []);
+      useEffect(() => {
+        let prevState = substate;
+        return getReduxStore().subscribe(() => prevState = checkForUpdates(prevState));
+      }, inputs);
 
-      return substateRef.current;
+      return substate;
     }
 
 
