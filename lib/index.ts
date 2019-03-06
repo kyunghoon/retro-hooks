@@ -200,7 +200,7 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
         const nextcleanup = [] as (() => void)[];
         this.effects.forEach(({ fn }) => {
           const ret = fn();
-          ret instanceof Function && nextcleanup.push(ret);
+          nextcleanup.push(ret instanceof Function ? ret : () => {});
         });
         this.cleanup = nextcleanup;
       } catch (err) {
@@ -210,8 +210,14 @@ export const withHooks = <P extends unknown>(renderFn: (hooks: Hooks, props: P) 
     }
     componentDidUpdate() {
       try {
-        this.effects.forEach(({ fn, inputs, changed }) =>
-          !inputs || inputs.length > 0 && changed && fn());
+        this.effects.forEach(({ fn, inputs, changed }, n) => {
+          if (this.cleanup) {
+            const cu = this.cleanup[n];
+            this.cleanup[n] = () => { };
+            cu();
+          }
+          !inputs || inputs.length > 0 && changed && fn();
+        });
       } catch (err) {
         console.error(err);
         throw err;
